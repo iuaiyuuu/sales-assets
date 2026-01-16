@@ -1,14 +1,16 @@
 const sheetCSV =
-  "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5jwEtWeGxCR1S2sXEmHDf-NoHzzNTbvf4bg8ZDzJCZoCsJqe05UOnuXrUGzM-BZeNVarVfVPZcPX-/pub?gid=498206024&single=true&output=csv"+ Date.now();
-console.log(rows[1].length, rows[1]);
+  "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5jwEtWeGxCR1S2sXEmHDf-NoHzzNTbvf4bg8ZDzJCZoCsJqe05UOnuXrUGzM-BZeNVarVfVPZcPX-/pub?gid=498206024&single=true&output=csv";
 
 // LOGO (Supabase public URL kamu)
 const logoURL =
   "https://jmlfavfecfnmjlznmpwk.supabase.co/storage/v1/object/public/breal/auora-removebg-preview.png";
 
 // ===== MAP =====
+const markerLayer = L.layerGroup().addTo(map);
 const map = L.map("map").setView([-3.35, 114.6], 12);
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(markerLayer);
+
+
 
 // ===== DOM =====
 const statsDiv = document.getElementById("stats");
@@ -60,21 +62,26 @@ function addWatermark(pdf, img) {
 // ===== LOAD DATA =====
 Papa.parse(sheetCSV, {
   download: true,
-  header: true,              // ⬅️ WAJIB
   skipEmptyLines: true,
   complete: res => {
-    res.data.forEach(r => {
+    
+     markerLayer.clearLayers();   // ⬅️ WAJIB
+    allData.length = 0;
+    salesSet.clear();
+    
+    const rows = res.data;
+    for (let i = 1; i < rows.length; i++) {
+      const r = rows[i];
       const d = {
-        time: r["Timestamp"],
-        sales: r["Nama Sales"],
-        toko: r["Nama Toko"],
-        alamat: r["Alamat Toko"],
-        lat: parseFloat(r["Latitude Lokasi Toko"]),
-        lng: parseFloat(r["Longitude Lokasi Toko"]),
-        date: dateOnly(r["Timestamp"])
+        time: r[0],
+        sales: r[1],
+        toko: r[2],
+        alamat: r[3],
+        lat: +r[5],
+        lng: +r[6],
+        date: dateOnly(r[0])
       };
-
-      if (isNaN(d.lat) || isNaN(d.lng)) return;
+      if (isNaN(d.lat)) continue;
 
       if (!salesColor[d.sales])
         salesColor[d.sales] = colors[colorIdx++ % colors.length];
@@ -92,13 +99,12 @@ Papa.parse(sheetCSV, {
 
       allData.push(d);
       salesSet.add(d.sales);
-    });
+    }
 
     renderSalesCheckbox();
     applyFilter();
   }
 });
-
 
 // ===== UI =====
 function renderSalesCheckbox() {
@@ -265,7 +271,5 @@ document.getElementById("exportPDF").onclick = () => {
   pdf.save("laporan_kunjungan_sales.pdf");
 };
 
-document.getElementById("btnSearch").onclick = loadSheetData;
-window.onload = loadSheetData;
 
 
