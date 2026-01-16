@@ -1,6 +1,6 @@
 const sheetCSV =
-  "https://docs.google.com/spreadsheets/d/1kG9KJxXzQq-7fNAjWIuxjPUCb5JalU0DKVIWfYSpvWc/gviz/tq?tqx=out:csv&gid=569931646";
-
+  "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5jwEtWeGxCR1S2sXEmHDf-NoHzzNTbvf4bg8ZDzJCZoCsJqe05UOnuXrUGzM-BZeNVarVfVPZcPX-/pub?output=csv";
+# https://docs.google.com/spreadsheets/d/e/2PACX-1vS5jwEtWeGxCR1S2sXEmHDf-NoHzzNTbvf4bg8ZDzJCZoCsJqe05UOnuXrUGzM-BZeNVarVfVPZcPX-/pub?output=csv
 // LOGO (Supabase public URL kamu)
 const logoURL =
   "https://jmlfavfecfnmjlznmpwk.supabase.co/storage/v1/object/public/breal/auora-removebg-preview.png";
@@ -262,3 +262,4 @@ document.getElementById("exportPDF").onclick = () => {
 
   pdf.save("laporan_kunjungan_sales.pdf");
 };
+
