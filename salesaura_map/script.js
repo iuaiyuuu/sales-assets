@@ -1,5 +1,6 @@
 const sheetCSV =
   "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5jwEtWeGxCR1S2sXEmHDf-NoHzzNTbvf4bg8ZDzJCZoCsJqe05UOnuXrUGzM-BZeNVarVfVPZcPX-/pub?gid=498206024&single=true&output=csv"+ Date.now();
+console.log(rows[1].length, rows[1]);
 
 // LOGO (Supabase public URL kamu)
 const logoURL =
@@ -265,5 +266,6 @@ document.getElementById("exportPDF").onclick = () => {
 
 document.getElementById("btnSearch").onclick = loadSheetData;
 window.onload = loadSheetData;
+
 
 
