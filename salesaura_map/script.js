@@ -60,21 +60,21 @@ function addWatermark(pdf, img) {
 // ===== LOAD DATA =====
 Papa.parse(sheetCSV, {
   download: true,
+  header: true,              // ⬅️ WAJIB
   skipEmptyLines: true,
   complete: res => {
-    const rows = res.data;
-    for (let i = 1; i < rows.length; i++) {
-      const r = rows[i];
+    res.data.forEach(r => {
       const d = {
-        time: r[0],
-        sales: r[1],
-        toko: r[2],
-        alamat: r[3],
-        lat: +r[5],
-        lng: +r[6],
-        date: dateOnly(r[0])
+        time: r["Timestamp"],
+        sales: r["Nama Sales"],
+        toko: r["Nama Toko"],
+        alamat: r["Alamat Toko"],
+        lat: parseFloat(r["Latitude Lokasi Toko"]),
+        lng: parseFloat(r["Longitude Lokasi Toko"]),
+        date: dateOnly(r["Timestamp"])
       };
-      if (isNaN(d.lat)) continue;
+
+      if (isNaN(d.lat) || isNaN(d.lng)) return;
 
       if (!salesColor[d.sales])
         salesColor[d.sales] = colors[colorIdx++ % colors.length];
@@ -92,12 +92,13 @@ Papa.parse(sheetCSV, {
 
       allData.push(d);
       salesSet.add(d.sales);
-    }
+    });
 
     renderSalesCheckbox();
     applyFilter();
   }
 });
+
 
 // ===== UI =====
 function renderSalesCheckbox() {
@@ -266,6 +267,5 @@ document.getElementById("exportPDF").onclick = () => {
 
 document.getElementById("btnSearch").onclick = loadSheetData;
 window.onload = loadSheetData;
-
 
 
