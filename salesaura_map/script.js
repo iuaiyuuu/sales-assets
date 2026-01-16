@@ -263,5 +263,7 @@ document.getElementById("exportPDF").onclick = () => {
   pdf.save("laporan_kunjungan_sales.pdf");
 };
 
+document.getElementById("btnSearch").onclick = loadSheetData;
+window.onload = loadSheetData;
 
 
