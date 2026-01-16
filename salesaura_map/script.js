@@ -1,266 +1,215 @@
-const sheetCSV =
-  "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5jwEtWeGxCR1S2sXEmHDf-NoHzzNTbvf4bg8ZDzJCZoCsJqe05UOnuXrUGzM-BZeNVarVfVPZcPX-/pub?gid=498206024&single=true&output=csv";
-# https://docs.google.com/spreadsheets/d/e/2PACX-1vS5jwEtWeGxCR1S2sXEmHDf-NoHzzNTbvf4bg8ZDzJCZoCsJqe05UOnuXrUGzM-BZeNVarVfVPZcPX-/pub?output=csv
-// LOGO (Supabase public URL kamu)
-const logoURL =
-  "https://jmlfavfecfnmjlznmpwk.supabase.co/storage/v1/object/public/breal/auora-removebg-preview.png";
+/**
+ * AUORA CORE MONITORING - Full Script
+ * Menggunakan Data dari Link CSV Baru
+ */
 
-// ===== MAP =====
-const map = L.map("map").setView([-3.35, 114.6], 12);
-L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
+// --- 1. KONFIGURASI DATA ---
+// Link CSV Baru yang Anda berikan
+const baseCSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS5jwEtWeGxCR1S2sXEmHDf-NoHzzNTbvf4bg8ZDzJCZoCsJqe05UOnuXrUGzM-BZeNVarVfVPZcPX-/pub?gid=498206024&single=true&output=csv";
+const logoURL = "https://jmlfavfecfnmjlznmpwk.supabase.co/storage/v1/object/public/breal/auora-removebg-preview.png";
 
-// ===== DOM =====
-const statsDiv = document.getElementById("stats");
-const salesBox = document.getElementById("salesCheckbox");
-const fromDate = document.getElementById("fromDate");
-const toDate = document.getElementById("toDate");
-
-// ===== DATA =====
-const allData = [];
+let allData = [];
 let filteredData = [];
-let currentStats = {};
-let currentTotal = 0;
-
-const salesSet = new Set();
+let barChart = null;
 const salesColor = {};
-let colorIdx = 0;
-let chart;
+const palette = ["#3b82f6", "#ef4444", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899", "#06b6d4", "#f43f5e", "#6366f1", "#d946ef"];
 
-// ===== COLORS =====
-const colors = [
-  "#2563eb","#dc2626","#16a34a","#f59e0b","#7c3aed",
-  "#0d9488","#9333ea","#db2777","#0891b2","#4d7c0f",
-  "#0ea5e9","#84cc16","#f97316","#22c55e","#a855f7"
-];
+// --- 2. INISIALISASI PETA ---
+const map = L.map("map", { zoomControl: false }).setView([-3.3547, 114.6384], 12);
+L.control.zoom({ position: 'bottomleft' }).addTo(map);
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png").addTo(map);
+const activeLayer = L.layerGroup().addTo(map);
 
-// ===== HELPERS =====
-function dateOnly(ts) {
-  const [d] = ts.split(" ");
-  const [m, day, y] = d.split("/");
-  return `${y}-${m.padStart(2,"0")}-${day.padStart(2,"0")}`;
+// --- 3. FUNGSI PARSE TANGGAL ---
+function parseDate(str) {
+    if (!str) return null;
+    const [datePart] = str.split(" ");
+    const [m, d, y] = datePart.split("/").map(Number);
+    return new Date(y, m - 1, d);
 }
 
-function addLogoPreserveRatio(pdf, img, x, y, targetWidth) {
-  const p = pdf.getImageProperties(img);
-  const ratio = p.height / p.width;
-  const h = targetWidth * ratio;
-  pdf.addImage(img, "PNG", x, y, targetWidth, h);
-  return h;
+// --- 4. LOAD DATA DENGAN DEBUGGER ---
+function loadSheetData() {
+    // Menambahkan cache buster agar data selalu fresh
+    const finalUrl = `${baseCSV}&cachebuster=${Date.now()}`;
+    
+    Papa.parse(finalUrl, {
+        download: true,
+        header: false,
+        skipEmptyLines: true,
+        complete: (res) => {
+            console.log("Data CSV Berhasil Diambil:", res.data); // DEBUG: Cek di Inspect Console
+            
+            allData = [];
+            let colorIdx = 0;
+            
+            // Periksa baris pertama data setelah header
+            if (res.data.length > 1) {
+                console.log("Contoh Baris 1:", res.data[1]);
+                console.log("Status Kolom K (index 10):", res.data[1][10]);
+            }
+
+            res.data.slice(1).forEach((r, index) => {
+                // Pastikan kolom r[1] (Sales), r[5] (Lat), r[6] (Long) tidak kosong
+                if (!r[1] || !r[5] || !r[6]) return;
+
+                if (!salesColor[r[1]]) salesColor[r[1]] = palette[colorIdx++ % palette.length];
+
+                allData.push({
+                    time: r[0],
+                    sales: r[1],
+                    toko: r[2],
+                    lat: parseFloat(r[5]),
+                    lng: parseFloat(r[6]),
+                    putih: parseInt(r[7] || 0),
+                    biru: parseInt(r[8] || 0),
+                    hitam: parseInt(r[9] || 0),
+                    // Mengubah status menjadi TRUE jika kolom K berisi "TRUE" atau "Aktif"
+                    status: r[10]?.toString().trim().toUpperCase() === "TRUE" || r[10]?.toString().trim() === "Aktif",
+                    dateObj: parseDate(r[0])
+                });
+            });
+
+            console.log("Total Data Terproses:", allData.length);
+            renderCheckboxes();
+            applyFilter();
+        }
+    });
 }
 
-function addWatermark(pdf, img) {
-  const w = pdf.internal.pageSize.getWidth();
-  const h = pdf.internal.pageSize.getHeight();
-  pdf.setGState(new pdf.GState({ opacity: 0.06 }));
-  pdf.addImage(img, "PNG", w/2 - 60, h/2 - 60, 120, 120);
-  pdf.setGState(new pdf.GState({ opacity: 1 }));
+// --- 5. RENDER CHECKBOX ---
+function renderCheckboxes() {
+    const sales = [...new Set(allData.filter(d => d.status).map(d => d.sales))].sort();
+    const container = document.getElementById("salesCheckbox");
+    container.innerHTML = sales.map(s => `
+        <label style="color:${salesColor[s]}; font-weight:600">
+            <input type="checkbox" value="${s}" checked onchange="applyFilter()"> ${s}
+        </label>`).join("");
 }
 
-// ===== LOAD DATA =====
-Papa.parse(sheetCSV, {
-  download: true,
-  skipEmptyLines: true,
-  complete: res => {
-    const rows = res.data;
-    for (let i = 1; i < rows.length; i++) {
-      const r = rows[i];
-      const d = {
-        time: r[0],
-        sales: r[1],
-        toko: r[2],
-        alamat: r[3],
-        lat: +r[5],
-        lng: +r[6],
-        date: dateOnly(r[0])
-      };
-      if (isNaN(d.lat)) continue;
-
-      if (!salesColor[d.sales])
-        salesColor[d.sales] = colors[colorIdx++ % colors.length];
-
-      d.marker = L.circleMarker([d.lat, d.lng], {
-        radius: 7,
-        color: salesColor[d.sales],
-        fillOpacity: 0.9
-      }).bindPopup(`
-        <b>${d.toko}</b><br>
-        Sales: ${d.sales}<br>
-        ${d.alamat}<br>
-        ${d.time}
-      `).addTo(map);
-
-      allData.push(d);
-      salesSet.add(d.sales);
-    }
-
-    renderSalesCheckbox();
-    applyFilter();
-  }
-});
-
-// ===== UI =====
-function renderSalesCheckbox() {
-  salesSet.forEach(s => {
-    const label = document.createElement("label");
-    label.innerHTML = `<input type="checkbox" value="${s}" checked> ${s}`;
-    salesBox.appendChild(label);
-  });
-  salesBox.querySelectorAll("input").forEach(cb =>
-    cb.addEventListener("change", applyFilter)
-  );
-}
-
-function getSelectedSales() {
-  return [...salesBox.querySelectorAll("input:checked")].map(i => i.value);
-}
-
-// ===== FILTER + STATS =====
+// --- 6. APPLY FILTER & RENDER PIN ---
 function applyFilter() {
-  const selected = getSelectedSales();
-  const from = fromDate.value;
-  const to = toDate.value;
+    const selected = Array.from(document.querySelectorAll("#salesCheckbox input:checked")).map(i => i.value);
+    const from = document.getElementById("fromDate").value ? new Date(document.getElementById("fromDate").value) : null;
+    const to = document.getElementById("toDate").value ? new Date(document.getElementById("toDate").value) : null;
 
-  let stats = {};
-  let bounds = [];
-  filteredData = [];
+    activeLayer.clearLayers();
+    
+    filteredData = allData.filter(d => {
+        const matchSales = selected.includes(d.sales);
+        const matchDate = (!from || d.dateObj >= from) && (!to || d.dateObj <= to);
+        // Jika d.status bermasalah, sementara bisa diganti: return matchSales && matchDate;
+        return d.status && matchSales && matchDate;
+    });
 
-  allData.forEach(d => {
-    const okSales = selected.includes(d.sales);
-    const okFrom = !from || d.date >= from;
-    const okTo = !to || d.date <= to;
+    const stats = {};
+    const bounds = [];
 
-    if (okSales && okFrom && okTo) {
-      d.marker.addTo(map);
-      bounds.push([d.lat, d.lng]);
-      stats[d.sales] = (stats[d.sales] || 0) + 1;
-      filteredData.push(d);
-    } else {
-      map.removeLayer(d.marker);
-    }
-  });
+    filteredData.forEach(d => {
+        const popup = `
+            <div style="min-width:140px; font-family:'Inter', sans-serif;">
+                <b style="color:#2563eb">${d.toko}</b><br>
+                <small>${d.time}</small><hr style="margin:5px 0">
+                <b>Sales:</b> ${d.sales}<br>
+                <div style="margin-top:5px">
+                    <span style="background:#eee; padding:2px 4px; border-radius:3px">P: ${d.putih}</span>
+                    <span style="background:#dbeafe; padding:2px 4px; border-radius:3px">B: ${d.biru}</span>
+                    <span style="background:#1e293b; color:#fff; padding:2px 4px; border-radius:3px">H: ${d.hitam}</span>
+                </div>
+            </div>`;
 
-  if (bounds.length) map.fitBounds(bounds, { padding: [30,30] });
+        L.circleMarker([d.lat, d.lng], {
+            radius: 8,
+            fillColor: salesColor[d.sales],
+            color: "#fff",
+            fillOpacity: 0.9,
+            weight: 2
+        }).addTo(activeLayer).bindPopup(popup);
 
-  currentStats = stats;
-  currentTotal = Object.values(stats).reduce((a,b)=>a+b,0);
+        bounds.push([d.lat, d.lng]);
+        stats[d.sales] = (stats[d.sales] || 0) + 1;
+    });
 
-  renderStats(stats, from, to);
-  renderChart(stats);
+    if (bounds.length) map.fitBounds(bounds, { padding: [50, 50] });
+    updateCharts(stats);
 }
 
-function renderStats(stats, from, to) {
-  let html = `<b>Periode:</b> ${from || "awal"} s/d ${to || "akhir"}<ul>`;
-  for (let s in stats) html += `<li>${s}: ${stats[s]}</li>`;
-  html += `</ul><b>Total Kunjungan: ${currentTotal}</b>`;
-  statsDiv.innerHTML = html;
+// --- 7. UPDATE CHART ---
+function updateCharts(stats) {
+    const labels = Object.keys(stats);
+    const values = Object.values(stats);
+    document.getElementById("textTotal").innerText = `Total Kunjungan: ${values.reduce((a, b) => a + b, 0)}`;
+
+    if (barChart) barChart.destroy();
+    const ctx = document.getElementById("salesChart").getContext("2d");
+    barChart = new Chart(ctx, {
+        type: "bar",
+        data: {
+            labels: labels.map(l => `${l} (${stats[l]})`),
+            datasets: [{ data: values, backgroundColor: labels.map(l => salesColor[l]) }]
+        },
+        options: {
+            indexAxis: "y",
+            responsive: true,
+            maintainAspectRatio: false,
+            plugins: { legend: { display: false } }
+        }
+    });
 }
 
-// ===== CHART =====
-function renderChart(stats) {
-  const labels = Object.keys(stats);
-  const data = Object.values(stats);
-  if (chart) chart.destroy();
+// --- 8. UI TOGGLE ---
+const menuToggle = document.getElementById("menuToggle");
+const sidebar = document.getElementById("mainControlBar");
 
-  chart = new Chart(document.getElementById("salesChart"), {
-    type: "bar",
-    data: {
-      labels,
-      datasets: [{
-        data,
-        backgroundColor: labels.map(l => salesColor[l])
-      }]
-    },
-    options: {
-      plugins: { legend: { display: false } },
-      responsive: true
-    }
-  });
-}
-
-fromDate.onchange = applyFilter;
-toDate.onchange = applyFilter;
-document.getElementById("resetFilter").onclick = () => {
-  fromDate.value = "";
-  toDate.value = "";
-  salesBox.querySelectorAll("input").forEach(i => i.checked = true);
-  applyFilter();
+menuToggle.onclick = function() {
+    this.classList.toggle("open");
+    sidebar.classList.toggle("hidden");
+    setTimeout(() => map.invalidateSize(), 400);
 };
 
-// ===== EXPORT PDF (FINAL) =====
+// --- 9. EXPORT PDF DENGAN WATERMARK ---
 document.getElementById("exportPDF").onclick = () => {
-  const { jsPDF } = window.jspdf;
-  const pdf = new jsPDF();
+    const { jsPDF } = window.jspdf;
+    if (!filteredData.length) return alert("Tidak ada data untuk diekspor!");
 
-  // WATERMARK (page 1)
-  addWatermark(pdf, logoURL);
+    const doc = new jsPDF("p", "mm", "a4");
+    const img = new Image();
+    img.crossOrigin = "Anonymous";
+    img.src = logoURL;
 
-  // HEADER
-  const logoH = addLogoPreserveRatio(pdf, logoURL, 14, 10, 35);
-  pdf.setFontSize(14);
-  pdf.text("LAPORAN KUNJUNGAN SALES", 105, 18, { align: "center" });
-  pdf.setFontSize(10);
-  pdf.text(
-    `Periode: ${fromDate.value || "awal"} s/d ${toDate.value || "akhir"}`,
-    105, 26, { align: "center" }
-  );
+    img.onload = () => {
+        doc.autoTable({
+            startY: 35,
+            head: [["No", "Waktu", "Sales", "Toko", "P", "B", "H"]],
+            body: filteredData.map((d, i) => [i + 1, d.time, d.sales, d.toko, d.putih, d.biru, d.hitam]),
+            theme: 'grid',
+            headStyles: { fillColor: [37, 99, 235] },
+            didDrawPage: function (data) {
+                // Header Background
+                doc.setFillColor(30, 41, 59); doc.rect(0, 0, 210, 30, "F");
+                // Logo Header
+                const ratio = img.width / img.height;
+                doc.addImage(img, "PNG", 15, 5, 20 * ratio, 20);
+                // Title
+                doc.setTextColor(255).setFontSize(14).setFont("helvetica", "bold");
+                doc.text("LAPORAN MONITORING SALES", 200, 18, { align: "right" });
 
-  // RINGKASAN
-  let y = 10 + logoH + 10;
-  pdf.setFontSize(11);
-  pdf.text("Ringkasan:", 14, y);
-  y += 6;
-  Object.entries(currentStats).forEach(([s, n]) => {
-    pdf.text(`${s}: ${n} kunjungan`, 14, y);
-    y += 5;
-  });
-  pdf.text(`Total Kunjungan: ${currentTotal}`, 14, y + 2);
+                // WATERMARK BESAR TENGAH
+                doc.saveGraphicsState();
+                doc.setGState(new doc.GState({ opacity: 0.07 }));
+                const wmWidth = 120;
+                doc.addImage(img, "PNG", (210 - wmWidth) / 2, 80, wmWidth, wmWidth / ratio);
+                doc.restoreGraphicsState();
 
-  // GRAFIK (snapshot canvas)
-  const chartCanvas = document.getElementById("salesChart");
-  const chartImg = chartCanvas.toDataURL("image/png", 1.0);
-  pdf.addImage(chartImg, "PNG", 110, y - 10, 80, 45);
-
-  // TABEL DETAIL
-  const tableBody = filteredData.map(d => [
-    d.date, d.sales, d.toko, d.alamat
-  ]);
-
- pdf.autoTable({
-  startY: y + 20,
-  head: [["Tanggal", "Sales", "Nama Toko", "Alamat"]],
-  body: tableBody,
-  styles: {
-    fontSize: 9,
-    cellPadding: 2,
-    overflow: "linebreak"
-  },
-  tableWidth: "auto",
-  headStyles: { fillColor: [37, 99, 235] },
-  columnStyles: {
-    0: { cellWidth: 26 },   // tanggal
-    1: { cellWidth: 26 },   // sales
-    2: { cellWidth: 40 },   // toko
-    3: { cellWidth: "auto" } // alamat fleksibel
-  },
-  didDrawPage: function () {
-    addWatermark(pdf, logoURL);
-
-    const pageH = pdf.internal.pageSize.getHeight();
-    pdf.setFontSize(9);
-    pdf.text(
-      `Dicetak: ${new Date().toLocaleString()}`,
-      14, pageH - 10
-    );
-    pdf.text(
-      `Halaman ${pdf.internal.getNumberOfPages()}`,
-      200, pageH - 10,
-      { align: "right" }
-    );
-  }
-});
-
-
-  pdf.save("laporan_kunjungan_sales.pdf");
+                // Footer
+                doc.setFontSize(8).setTextColor(150);
+                doc.text(`Halaman ${doc.internal.getNumberOfPages()}`, 200, 287, { align: "right" });
+            }
+        });
+        doc.save(`Laporan_Sales_${Date.now()}.pdf`);
+    };
 };
 
-
+// Start
+document.getElementById("btnSearch").onclick = loadSheetData;
+window.onload = loadSheetData;
